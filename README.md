@@ -1,60 +1,43 @@
 # 🪨 Cairn
 
-**Self-hostable, server-centric source control for monorepos worked on by swarms of agents.** C++23 client and server, plus a web UI built on [Ultimate](https://github.com/developerz-ai/ultimate).
+**A self-hostable GitHub alternative built for agents.** Server-centric version control for monorepos of any size and any file type, from source code to multi-GB game assets. C++23 core, web forge on [Ultimate](https://github.com/developerz-ai/ultimate).
 
-> Status (2026-11): design stage, no code yet. "Cairn" is a working title.
+> Status (2026-11): design stage. Docs only, no code yet. "Cairn" is a working title.
 
 ## Why
+Git puts all history in every clone and merges through queues. With hundreds of agents landing changes, that breaks. Cairn takes the best idea from each version control system ([catalog](docs/idea/11-ideas-from-every-vcs.md)) and builds one model:
 
-Git assumes every clone holds the full history and every merge goes through a queue. With hundreds of agents landing changes, that breaks down. Cairn moves history and writes to the server:
-
-- **Server owns history.** Commits, rebases and lands all run server-side. Clients are always online and fetch only what they need.
-- **Land by compare-and-swap.** No merge queue. Concurrent lands are batched into one ref update per round, verified after the merge, and failures are bisected and reverted automatically.
-- **Cost scales with the change.** A changeset is a delta against its first parent. Root trees, blame, path history and the commit graph are derived indexes.
-- **Immutable, content-addressed objects** (BLAKE3, zstd). Any cache tier can serve them without coordination.
-- **Optional, sparse working copies**: sparse checkout first, then a FUSE virtual filesystem. Jobs that only need a diff or blame call the API directly.
+- **Server owns history.** Commits, rebases and lands run server-side. Clients fetch only what they need.
+- **Land by compare-and-swap.** No serial merge queue. Concurrent lands batch into one ref update per round; verification runs after merge, with flake-aware bisect and auto-revert.
+- **Cost scales with the change.** A changeset is a delta against its parent. Root trees, blame, path history and the commit graph are derived indexes.
+- **Immutable, content-addressed objects** (BLAKE3, zstd, FastCDC chunks). Any cache tier serves anything.
+- **Every file type.** Versioned typemap: locks for unmergeable assets, chunked multi-GB files, previews, purge and archive.
+- **Optional working copies.** Sparse checkout, a virtual filesystem (FUSE, NFS/FSKit, ProjFS), or none at all: query the API.
+- **Self-hostable.** One box on PostgreSQL + disk; scale to YugabyteDB + S3 + regional caches.
 
 ## Architecture
-
 ```
-cairn CLI ─▶ cairnd (node daemon) ─▶ cairn-cache (regional) ─▶ cairn-server ─▶ MetaStore + BlobStore
-                                                                  ▲
-                                               web UI (Ultimate) ─┘
+cairn CLI ─▶ cairnd (node) ─▶ cairn-cache (regional) ─▶ cairn-server ─▶ PostgreSQL / YugabyteDB
+                                                           ▲   └──────▶ disk / S3-compatible
+                      cairn-web forge (Ultimate) ──JSON────┘
 ```
 
-| Part | Role |
+## Docs
+| Start here | |
 |---|---|
-| `cairn-server` | Stateless fleet: object RPCs, landing, history, derived data |
-| `cairnd` | One per machine; shared, bounded on-disk object cache |
-| `cairn-cache` | Regional tier serving objects straight from memory |
-| `cairn` | CLI: checkout, status, diff, commit, land, log, blame; `--json` everywhere |
-| Web UI | Browse, history, blame, land activity, verifier status |
-| Metadata | PostgreSQL (dev, small teams) or YugabyteDB (multi-node) |
-| Blobs | Local disk or any S3-compatible store |
+| What and why | [docs/idea/](docs/idea/README.md) |
+| How to build it | [docs/implementation/](docs/implementation/README.md) |
+| Decisions | [docs/decisions/](docs/decisions/README.md) |
+| Roadmap (M0–M5) | [15-roadmap.md](docs/implementation/15-roadmap.md) |
+| Agents | [CLAUDE.md](CLAUDE.md) · [.claude/](.claude) (rules, subagents, commands, skills) |
 
-Protocol: gRPC with protobuf on the wire. Hashed objects use a canonical hand-written encoding with checked-in test vectors.
-
-## Self-hosting
-
-Single node: `cairn-server` with PostgreSQL and local blobs. Scale out by adding server nodes, switching to YugabyteDB and S3, and placing caches near clients. No external services are required.
-
-## Engineering
-
-C++23 (Clang 18+, GCC 14+), CMake + Ninja, `std::expected` errors, no exceptions across module boundaries. Hot paths borrow from game engines (as in our railroads engine): data-oriented layouts, arena allocation, zero-copy object streaming, io_uring disk I/O and deterministic simulation testing. Every decoder is fuzzed, and ASan, UBSan and TSan run on every change.
-
-## Roadmap
-
-| Milestone | Scope |
-|---|---|
-| M0 | Object formats, test vectors, in-memory stores |
-| M1 | Single-node server on PostgreSQL, CAS landing, sparse checkout, CLI |
-| M2 | Derived data: path history, blame, segmented commit graph; git import |
-| M3 | YugabyteDB, S3, `cairnd` and `cairn-cache` tiers, land batching |
-| M4 | Path ACLs, service principals, redaction, verifier with auto-revert |
-| M5 | Virtual working copy, git protocol v2 read path, read-only git mirror |
-
-Not planned for v1: offline work, two-way git sync, built-in code review, search or CI (Cairn exposes APIs for them).
+## Built for agents to build
+The repo is set up so coding agents, including smaller models, can do great work:
+- `CLAUDE.md`: the contract (rules, layout, commands, boundaries).
+- `.claude/rules/`: path-scoped rules that load automatically (C++, hot paths, determinism, formats, storage, web, docs).
+- `.claude/agents/`: architect, cpp-implementer, reviewer, perf-engineer, dst-hunter, security-auditor, web-forge, docs-keeper.
+- `.claude/commands/`: `/planx`, `/feature`, `/check`, `/review`, `/bench`, `/hunt`, `/adr`.
+- `.claude/skills/`: dev loop, formats cheat sheet, deterministic simulation, performance patterns.
 
 ## Credits
-
-Cairn builds on published work from Meta's **Mononoke** and Bonsai data model, **Sapling**'s segmented changelog, **EdenFS**, Google's **Piper** and CitC, **Jujutsu**, **Dolt**'s prolly trees, and Anthropic's description of **Scion**. It is independent and not affiliated with any of them.
+Cairn builds on published work from Meta's **Mononoke** (Bonsai data model), **Sapling** (segmented changelog) and **EdenFS**; Google's **Piper**, **CitC** and **TAP**; **Jujutsu**; **Dolt** (prolly trees); **Perforce** and **Unity Version Control** (typemaps, locking); Epic's **Lore**; and Anthropic's description of **Scion**. It is independent and not affiliated with any of them. Sources: [prior art](docs/idea/02-prior-art.md).
