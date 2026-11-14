@@ -41,3 +41,5 @@ The repo is set up so coding agents, including smaller models, can do great work
 
 ## Credits
 Cairn builds on published work from Meta's **Mononoke** (Bonsai data model), **Sapling** (segmented changelog) and **EdenFS**; Google's **Piper**, **CitC** and **TAP**; **Jujutsu**; **Dolt** (prolly trees); **Perforce** and **Unity Version Control** (typemaps, locking); Epic's **Lore**; and Anthropic's description of **Scion**. It is independent and not affiliated with any of them. Sources: [prior art](docs/idea/02-prior-art.md).
+
+License: MIT, see [LICENSE](LICENSE).
